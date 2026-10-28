@@ -3,7 +3,13 @@
   const $ = id => document.getElementById(id);
   const preset = JSON.parse($('connectionPreset').textContent);
   const definitions = preset.fields || [], known = new Set(definitions.map(x => x.Identifier));
-  const PERIOD = 10000, STALE = 45000, MAX = 360;
+  const INTERVALS = [5,10,15,30,60,180,300], STALE = 45000, MAX = 360;
+  let interval = 10;
+  try { const saved=Number(localStorage.getItem('bms-refresh-interval')); if(INTERVALS.includes(saved)) interval=saved; } catch {}
+  $('refreshInterval').value=String(interval);
+  $('intervalDisplay').textContent=interval+' 秒';
+  $('cacheHint').classList.toggle('hidden',interval!==5);
+  const staleThreshold = () => STALE + Math.max(0,interval*1000-10000);
   let items = {}, records = [], token = '', generation = 0, pollTimer, controller;
   let connected = false, lastFetch = 0, receivedAt = 0, selected = 'PackVoltage', count = 0, serverOffset = 0;
   const clockNow = () => Date.now() + serverOffset;
@@ -19,7 +25,7 @@
   const reading = key => hasData(key) && finite(items[key].value) ? items[key] : null;
   const num = key => reading(key) ? Number(items[key].value) : null;
   const show = (key, digits = 2, unit = '') => num(key) === null ? '' : num(key).toFixed(digits) + unit;
-  const stale = row => !connected || clockNow() - Math.min(Number(row.time), receivedAt || clockNow()) > STALE;
+  const stale = row => !connected || clockNow() - Math.min(Number(row.time), receivedAt || clockNow()) > staleThreshold();
   const setBadge = (text, kind = '') => { $('connectionBadge').textContent = text; $('connectionBadge').className = 'badge ' + kind; };
   const notice = (text, kind = '') => { $('notice').textContent = text; $('notice').className = 'notice ' + kind; };
   function element(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
@@ -79,12 +85,12 @@
     } catch (error) {
       if (myGeneration !== generation) return;
       connected = false; setBadge(navigator.onLine?'等待重连':'网页已离线','warn');
-      notice('暂时无法读取设备数据，10 秒后重试；已收到的数据保留。','warn');
+      notice('暂时无法读取设备数据，'+interval+' 秒后重试；已收到的数据保留。','warn');
       empty('等待连接恢复','网络恢复后将自动重新读取设备数据。');
       log(error.name==='AbortError'?'数据读取超时。':'数据读取失败，请检查接口、网络及 CORS。'); renderAll();
     } finally {
       clearTimeout(deadline); if (controller===request) controller=null;
-      if (myGeneration===generation && token) pollTimer=setTimeout(()=>poll(myGeneration),PERIOD);
+      if (myGeneration===generation && token) pollTimer=setTimeout(()=>poll(myGeneration),interval*1000);
     }
   }
   function ingest(payload) {
@@ -214,7 +220,7 @@
     let markup='';
     for(let i=0;i<4;i++){const value=min+(max-min)*i/3,yy=y(value);markup+=`<line x1="${left}" x2="${right}" y1="${yy}" y2="${yy}" stroke="${line}" stroke-dasharray="4 5"/><text x="${left-7}" y="${yy+4}" text-anchor="end" fill="${text}" font-size="12">${value.toFixed(selected==='PackVoltage'?2:1)}</text>`;}
     for(let i=0;i<3;i++)markup+=`<text x="${left+(right-left)*i/2}" y="192" text-anchor="${i===0?'start':i===2?'end':'middle'}" fill="${text}" font-size="12">${fmt(start+(end-start)*i/2)}</text>`;
-    if(points.length){let d='',previous=null;for(const p of points){d+=(previous===null||p.time-previous>STALE?'M':'L')+x(p.time).toFixed(2)+','+y(p.value).toFixed(2)+' ';previous=p.time;}markup+=`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;if(points.length<=60)for(const p of points)markup+=`<circle cx="${x(p.time)}" cy="${y(p.value)}" r="3" fill="${color}" stroke="${surface}"/>`;}
+    if(points.length){let d='',previous=null;for(const p of points){d+=(previous===null||p.time-previous>Math.max(STALE,interval*2000)?'M':'L')+x(p.time).toFixed(2)+','+y(p.value).toFixed(2)+' ';previous=p.time;}markup+=`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;if(points.length<=60)for(const p of points)markup+=`<circle cx="${x(p.time)}" cy="${y(p.value)}" r="3" fill="${color}" stroke="${surface}"/>`;}
     svg.innerHTML=markup;
   }
   function tick() {
@@ -224,10 +230,15 @@
     $('latestTime').textContent=latest?fmt(latest,true):'';
     const expired=valid.some(stale),age=latest?Math.max(0,Math.floor((clockNow()-Math.min(latest,receivedAt))/1000)):0;
     $('freshness').textContent=!valid.length?'等待数据':!connected?'网页连接中断':expired?'部分数据已过期':'数据新鲜'; $('freshness').style.color=expired?'var(--amber)':'var(--accent)';
-    if(connected)notice(!valid.length?'接口已连接，等待设备有效上报。':expired?'接口已连接，部分属性超过 45 秒无新上报。':'同步中 · 最近上报 '+fmt(latest)+' · '+age+' 秒前',expired?'warn':'');
+    if(connected)notice(!valid.length?'接口已连接，等待设备有效上报。':expired?'接口已连接，部分属性超过 '+Math.round(staleThreshold()/1000)+' 秒无新上报。':'同步中 · 最近上报 '+fmt(latest)+' · '+age+' 秒前',expired?'warn':'');
     renderMetrics();renderCells();renderTemperatures();renderGroups();renderTable();fitReadings();
   }
   function renderAll(){tick();renderChart();}
+  $('refreshInterval').addEventListener('change',event=>{
+    const next=Number(event.target.value); if(!INTERVALS.includes(next)){event.target.value=String(interval);return;}
+    interval=next; $('intervalDisplay').textContent=interval+' 秒'; $('cacheHint').classList.toggle('hidden',interval!==5); try { localStorage.setItem('bms-refresh-interval',String(interval)); } catch {}
+    clearTimeout(pollTimer); renderAll(); if(token&&!controller) poll(generation);
+  });
   $('refreshBtn').addEventListener('click',()=>poll(generation)); $('search').addEventListener('input',renderTable);
   document.querySelectorAll('[data-chart]').forEach(button=>button.addEventListener('click',()=>{selected=button.dataset.chart;renderChart();}));
   $('exportBtn').addEventListener('click',()=>{

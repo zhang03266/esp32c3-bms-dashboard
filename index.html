@@ -5,7 +5,7 @@
 <meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#f3f6f8">
 <title>esp32c3_zyc · BMS 电池观测站</title>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('bms-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');}catch{}</script>
-<link rel="stylesheet" href="styles.css?v=20261028d"><script src="app.js?v=20261028d" defer></script>
+<link rel="stylesheet" href="styles.css?v=20261028e"><script src="app.js?v=20261028e" defer></script>
 </head>
 <body>
 <svg class="symbol-sheet" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
@@ -24,7 +24,8 @@
     <div class="brand"><span class="brand-mark"><svg><use href="#i-battery"/></svg></span><div><strong>电池观测站<span>BMS MONITOR</span></strong><small>设备数据，清晰掌握。</small></div></div>
     <div class="top-right"><time id="clock"></time><span class="badge" id="connectionBadge">等待访问链接</span><button id="themeBtn" class="icon-btn" aria-label="切换至夜间模式" title="切换至夜间模式"><svg class="moon" viewBox="0 0 24 24"><path d="M20.8 13a9 9 0 0 1-9.8-9.8A9 9 0 1 0 20.8 13Z"/></svg><svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button></div>
   </header>
-  <section class="intro"><div><div class="eyebrow"><i></i> LIVE BATTERY TELEMETRY</div><h1>每一节，都心中有数。</h1><p class="sub"><span class="device-dot"></span> esp32c3_zyc <span class="separator">/</span> 华东 2 · 上海 <span class="separator">/</span> 每 10 秒读取</p></div><div class="actions"><button id="refreshBtn" class="btn" disabled><svg><use href="#i-update"/></svg>刷新数据</button><button id="exportBtn" class="btn primary" disabled>导出 CSV <span aria-hidden="true">↗</span></button></div></section>
+  <section class="intro"><div><div class="eyebrow"><i></i> LIVE BATTERY TELEMETRY</div><h1>每一节，都心中有数。</h1><p class="sub"><span class="device-dot"></span> esp32c3_zyc <span class="separator">/</span> 华东 2 · 上海</p></div><div class="actions"><label class="interval-control" for="refreshInterval">刷新间隔<select id="refreshInterval"><option value="5">5 秒</option><option value="10" selected>10 秒</option><option value="15">15 秒</option><option value="30">30 秒</option><option value="60">60 秒</option><option value="180">180 秒</option><option value="300">300 秒</option></select></label><button id="refreshBtn" class="btn" disabled><svg><use href="#i-update"/></svg>刷新数据</button><button id="exportBtn" class="btn primary" disabled>导出 CSV <span aria-hidden="true">↗</span></button></div></section>
+  <p id="cacheHint" class="cache-hint hidden">接口缓存约 8 秒；5 秒刷新可能显示相同数据。</p>
   <div id="notice" class="notice" role="status" aria-live="polite">正在检查访问链接…</div>
   <section id="emptyState" class="empty-state card"><span class="empty-icon"><svg><use href="#i-battery"/></svg></span><h2 id="emptyTitle">等待设备数据</h2><p id="emptyDescription">连接后，将自动显示有数据的监测模块。</p></section>
   <main id="telemetry" class="hidden">
@@ -34,7 +35,7 @@
       <article class="metric" data-metric="Current"><div class="metric-top"><span class="metric-label">实时电流<small>CURRENT</small></span><span class="metric-glyph">∿</span></div><div class="reading"><strong id="currentValue">—</strong><span>A</span></div><div class="metric-foot" id="currentFoot"></div></article>
       <article class="metric temperature" data-metric="temperature"><div class="metric-top"><span class="metric-label">最高探头温度<small>MAX TEMPERATURE</small></span><svg><use href="#i-temp"/></svg></div><div class="reading"><strong id="tempValue">—</strong><span>°C</span></div><div class="metric-foot" id="tempFoot"></div></article>
     </section>
-    <div class="strip"><div><small>数据新鲜度</small><strong id="freshness">—</strong></div><div><small>最近上报 · 北京时间</small><strong id="latestTime">—</strong></div><div><small>设备上报间隔</small><strong>约 15 秒</strong></div><div><small>本次新记录</small><strong id="messageCount">0 条</strong></div></div>
+    <div class="strip"><div><small>数据新鲜度</small><strong id="freshness">—</strong></div><div><small>最近上报 · 北京时间</small><strong id="latestTime">—</strong></div><div><small>看板刷新间隔</small><strong id="intervalDisplay">10 秒</strong></div><div><small>本次新记录</small><strong id="messageCount">0 条</strong></div></div>
     <div class="module-grid">
       <section class="card module span-8 hidden" id="cellsModule"><div class="section-head"><div class="section-title"><span class="module-icon mint"><svg><use href="#i-cells"/></svg></span><div><h2>单节电芯电压</h2><p>查看每节电芯的实际状态</p></div></div><span id="cellCount" class="tag"></span></div><div class="cell-stats"><div data-field="MinCellVoltage"><small>最低单体</small><strong id="minCell"></strong></div><div data-field="MaxCellVoltage"><small>最高单体</small><strong id="maxCell"></strong></div><div data-field="DeltaCellVoltage"><small>单体压差</small><strong id="deltaCell"></strong></div><div data-field="AverageCellVoltage"><small>平均单体</small><strong id="averageCell"></strong></div></div><div id="cells" class="cells"></div><p class="footnote">红色为最高电压，蓝色为最低电压；电压相同时不标记。</p></section>
       <section class="card module span-4 hidden" id="temperatureModule"><div class="section-head"><div class="section-title"><span class="module-icon blue"><svg><use href="#i-temp"/></svg></span><div><h2>温度监测</h2><p>已上报的温度探头</p></div></div><span class="tag" id="probeCount"></span></div><div id="temperatures" class="temperatures"></div></section>

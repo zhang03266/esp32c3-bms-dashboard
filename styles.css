@@ -60,3 +60,8 @@
 .cell-max .cell-battery:after{background:var(--red)}
 @media(max-width:700px){.cell{gap:4px;padding-right:4px}.cell small{width:14px;font-size:10px}.cell strong{font-size:13px}.cell strong em{font-size:9px}.cell-battery{min-height:40px}}
 @media(max-width:360px){.cell strong{font-size:14px}}
+.interval-control{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 10px 0 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font-size:11px;white-space:nowrap}
+.interval-control select{min-height:40px;border:0;background:var(--surface);color:var(--text);font:inherit;cursor:pointer}
+.interval-control select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.cache-hint{margin:-12px 0 16px;text-align:right;color:var(--muted);font-size:11px}
+@media(max-width:700px){.actions{flex-wrap:wrap}.interval-control{flex:1 1 100%;justify-content:space-between}.actions .btn{flex:1 1 0}}
