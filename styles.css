@@ -38,3 +38,25 @@
   tr{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;padding:12px 0}
 }
 @media(max-width:360px){.reading strong{font-size:29px}}
+
+/* Keep the four primary readings visually consistent. */
+.metric.soc,.metric.temperature{background:var(--surface);border-color:var(--line);color:var(--text)}
+.soc .metric-top>svg{color:var(--muted)}
+.soc .metric-label small{color:var(--subtle)}
+.soc .metric-foot{color:var(--muted);border-color:var(--line)}
+#chart text{stroke:none;font-weight:500}
+.cell-min strong,.cell-min strong em,#minCell{color:var(--blue)}
+.cell-max strong,.cell-max strong em,#maxCell{color:var(--red)}
+.cells{gap:14px 10px}
+.cell{display:flex;align-items:center;gap:7px;border:0;padding:4px 5px 4px 0;min-width:0}
+.cell small{display:block;flex:none;width:18px;text-align:right;font-size:12px;color:var(--muted)}
+.cell-battery{position:relative;display:flex;align-items:center;justify-content:center;flex:1;min-width:0;min-height:44px;border:2px solid var(--accent);border-radius:6px;background:var(--accent-soft)}
+.cell-battery:after{content:"";position:absolute;left:100%;width:4px;height:14px;border-radius:0 3px 3px 0;background:var(--accent)}
+.cell strong{margin:0;font-size:16px;white-space:nowrap}
+.cell strong em{margin-left:2px;font-size:10px}
+.cell-min .cell-battery{border-color:var(--blue);background:var(--blue-soft)}
+.cell-min .cell-battery:after{background:var(--blue)}
+.cell-max .cell-battery{border-color:var(--red);background:var(--red-soft)}
+.cell-max .cell-battery:after{background:var(--red)}
+@media(max-width:700px){.cell{gap:4px;padding-right:4px}.cell small{width:14px;font-size:10px}.cell strong{font-size:13px}.cell strong em{font-size:9px}.cell-battery{min-height:40px}}
+@media(max-width:360px){.cell strong{font-size:14px}}

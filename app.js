@@ -101,7 +101,8 @@
     items=next; receivedAt=now;
     const validChanges=Object.fromEntries(Object.entries(changes).filter(([key])=>hasData(key)));
     if (Object.keys(validChanges).length) {
-      records.push({receivedAt:now,items:validChanges}); records=records.filter(r=>r.receivedAt>=now-3600000).slice(-MAX); count++;
+      const snapshot=Object.fromEntries(definitions.filter(def=>hasData(def.Identifier)).map(def=>[def.Identifier,items[def.Identifier]]));
+      records.push({receivedAt:now,reportedAt:Math.max(...Object.values(validChanges).map(row=>row.time)),items:validChanges,snapshot}); records=records.filter(r=>r.receivedAt>=now-3600000).slice(-MAX); count++;
       $('exportBtn').disabled=false; if (count===1) log('已收到第一条真实属性记录。');
     }
   }
@@ -119,7 +120,7 @@
     });
   }
   function renderMetrics() {
-    $('socValue').textContent=show('Soc',0); $('socBar').style.width=Math.max(0,Math.min(100,num('Soc')||0))+'%';
+    $('socValue').textContent=show('Soc',0);
     $('voltageValue').textContent=show('PackVoltage'); $('currentValue').textContent=show('Current');
     const capacity=[show('RemainingCapacity',2,' Ah'),show('NominalCapacity',2,' Ah')].filter(Boolean).join(' / ');
     metricFooter('socFoot','Soc',capacity?capacity+' · ':''); metricFooter('voltageFoot','PackVoltage'); metricFooter('currentFoot','Current');
@@ -140,13 +141,14 @@
   function renderCells() {
     const cells=definitions.filter(x=>/^CellVoltage\d+$/.test(x.Identifier)&&reading(x.Identifier)).sort((a,b)=>Number(a.Identifier.slice(11))-Number(b.Identifier.slice(11)));
     visible($('cellsModule'),cells.length>0);
-    const values=cells.map(x=>num(x.Identifier)),low=values.length?Math.min(...values)-.01:0,high=values.length?Math.max(...values)+.01:1;
+    const values=cells.map(x=>num(x.Identifier)).filter(Number.isFinite),minimum=Math.min(...values),maximum=Math.max(...values);
     $('cells').replaceChildren(...cells.map(def=>{
       const row=items[def.Identifier],n=Number(def.Identifier.slice(11)),card=element('div',undefined,'cell'+(stale(row)?' stale':'')); card.dataset.field=def.Identifier;
-      const label=element('small','CELL '+String(n).padStart(2,'0')); label.append(element('span',String(n).padStart(2,'0')));
+      if (values.length>1 && minimum<maximum) card.classList.add(Number(row.value)===minimum?'cell-min':Number(row.value)===maximum?'cell-max':'cell-normal');
+      const label=element('small',String(n));
       const value=element('strong',Number(row.value).toFixed(3)); value.append(element('em','V'));
-      const bar=element('div',undefined,'bar'),fill=element('i'); fill.style.width=Math.max(0,Math.min(100,(Number(row.value)-low)/(high-low)*100))+'%'; bar.append(fill);
-      card.append(label,value,bar); card.title=def.Name+' · '+fmt(row.time,true)+(stale(row)?' · 已过期':''); return card;
+      const battery=element('div',undefined,'cell-battery'); battery.append(value);
+      card.append(label,battery); card.title=def.Name+' · '+fmt(row.time,true)+(stale(row)?' · 已过期':''); return card;
     }));
   }
   function renderTemperatures() {
@@ -208,10 +210,10 @@
     const pad=Math.max((max-min)*.2,selected === 'PackVoltage' ? 0.02 : selected === 'Current' ? 0.1 : 0.5);min-=pad;max+=pad;
     const start=points.length?points[0].time:clockNow(),end=points.length>1?points.at(-1).time:start+60000;
     const x=t=>left+(t-start)/Math.max(1,end-start)*(right-left),y=v=>bottom-(v-min)/(max-min)*(bottom-top);
-    const style=getComputedStyle(document.documentElement),line=style.getPropertyValue('--line').trim(),text=style.getPropertyValue('--subtle').trim(),color=style.getPropertyValue('--chart-line').trim(),surface=style.getPropertyValue('--surface').trim();
+    const style=getComputedStyle(document.documentElement),line=style.getPropertyValue('--line').trim(),text=style.getPropertyValue('--muted').trim(),color=style.getPropertyValue('--chart-line').trim(),surface=style.getPropertyValue('--surface').trim();
     let markup='';
-    for(let i=0;i<4;i++){const value=min+(max-min)*i/3,yy=y(value);markup+=`<line x1="${left}" x2="${right}" y1="${yy}" y2="${yy}" stroke="${line}" stroke-dasharray="4 5"/><text x="${left-7}" y="${yy+4}" text-anchor="end" fill="${text}" font-size="10">${value.toFixed(selected==='PackVoltage'?2:1)}</text>`;}
-    for(let i=0;i<3;i++)markup+=`<text x="${left+(right-left)*i/2}" y="192" text-anchor="middle" fill="${text}" font-size="10">${fmt(start+(end-start)*i/2)}</text>`;
+    for(let i=0;i<4;i++){const value=min+(max-min)*i/3,yy=y(value);markup+=`<line x1="${left}" x2="${right}" y1="${yy}" y2="${yy}" stroke="${line}" stroke-dasharray="4 5"/><text x="${left-7}" y="${yy+4}" text-anchor="end" fill="${text}" font-size="12">${value.toFixed(selected==='PackVoltage'?2:1)}</text>`;}
+    for(let i=0;i<3;i++)markup+=`<text x="${left+(right-left)*i/2}" y="192" text-anchor="${i===0?'start':i===2?'end':'middle'}" fill="${text}" font-size="12">${fmt(start+(end-start)*i/2)}</text>`;
     if(points.length){let d='',previous=null;for(const p of points){d+=(previous===null||p.time-previous>STALE?'M':'L')+x(p.time).toFixed(2)+','+y(p.value).toFixed(2)+' ';previous=p.time;}markup+=`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;if(points.length<=60)for(const p of points)markup+=`<circle cx="${x(p.time)}" cy="${y(p.value)}" r="3" fill="${color}" stroke="${surface}"/>`;}
     svg.innerHTML=markup;
   }
@@ -230,9 +232,12 @@
   document.querySelectorAll('[data-chart]').forEach(button=>button.addEventListener('click',()=>{selected=button.dataset.chart;renderChart();}));
   $('exportBtn').addEventListener('click',()=>{
     if(!records.length)return;
-    const quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"',safe=value=>/^[=+@\-\t\r]/.test(String(value))&&!finite(value)?"'"+value:value;
-    const lines=['mode,received_at,identifier,name,value,unit,reported_at'];
-    for(const record of records)for(const [key,row]of Object.entries(record.items)){const def=definitions.find(x=>x.Identifier===key);lines.push(['real',new Date(record.receivedAt).toISOString(),key,safe(def?.Name||key),safe(row.value),def?.Unit||'',new Date(row.time).toISOString()].map(quote).join(','));}
+    const quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"',safe=value=>/^[\s]*[=+@\-\t\r]/.test(String(value))&&!finite(value)?"'"+value:value;
+    const columns=definitions.filter(def=>records.some(record=>record.snapshot[def.Identifier]));
+    const label=def=>(def.Name||def.Identifier)+(def.Unit?' ('+def.Unit+')':'');
+    const labels=columns.map(label),headers=columns.map((def,i)=>labels.indexOf(labels[i])===labels.lastIndexOf(labels[i])?labels[i]:labels[i]+' ['+def.Identifier+']');
+    const lines=[['序号','上报时间（北京时间）',...headers].map(quote).join(',')];
+    records.forEach((record,index)=>{const time=new Date(record.reportedAt).toLocaleString('sv-SE',{timeZone:'Asia/Shanghai',hour12:false});const values=columns.map(def=>{const value=record.snapshot[def.Identifier]?.value;return safe(typeof value==='object'&&value!==null?JSON.stringify(value):value??'');});lines.push([index+1,time,...values].map(quote).join(','));});
     const url=URL.createObjectURL(new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'})),a=element('a');a.href=url;a.download='BMS-'+new Date().toISOString().replace(/[:.]/g,'-')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
   });
   addEventListener('resize',()=>{renderChart();fitReadings();});addEventListener('hashchange',start);
