@@ -4,13 +4,14 @@
   const preset = JSON.parse($('connectionPreset').textContent);
   const PERIOD = 10000, STALE = 45000, MAX = 360;
   let definitions = preset.fields || [], items = {}, records = [], token = '', mode = 'real';
-  let generation = 0, pollTimer, controller, demoTimer, connected = false, lastFetch = 0, receivedAt = 0, selected = 'PackVoltage', count = 0;
+  let generation = 0, pollTimer, controller, demoTimer, connected = false, lastFetch = 0, receivedAt = 0, selected = 'PackVoltage', count = 0, serverOffset = 0;
+  const clockNow = () => Date.now() + serverOffset;
   const fmt = (time, full = false) => new Date(Number(time)).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai', hour12:false, ...(full ? {month:'2-digit',day:'2-digit'} : {}), hour:'2-digit',minute:'2-digit',second:'2-digit'});
   const finite = value => value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(value));
   const reading = key => { const row = items[key]; return row && finite(row.value) && finite(row.time) && Number(row.time) > 0 ? row : null; };
   const num = key => reading(key) ? Number(items[key].value) : null;
   const show = (key, digits = 2, suffix = '') => num(key) === null ? '—' : num(key).toFixed(digits) + suffix;
-  const stale = row => !row || !finite(row.time) || !connected || Date.now() - Math.min(Number(row.time), receivedAt || Date.now()) > STALE;
+  const stale = row => !row || !finite(row.time) || !connected || clockNow() - Math.min(Number(row.time), receivedAt || clockNow()) > STALE;
   const setBadge = (text, kind = '') => { $('connectionBadge').textContent = text; $('connectionBadge').className = 'badge ' + kind; };
   const notice = (text, kind = '') => { $('notice').textContent = text; $('notice').className = 'notice ' + kind; };
   function log(text) { const li = document.createElement('li'); li.textContent = fmt(Date.now()) + ' · ' + text; $('log').prepend(li); while ($('log').children.length > 30) $('log').lastChild.remove(); }
@@ -18,7 +19,7 @@
   function clearData() { items = {}; records = []; count = 0; receivedAt = 0; lastFetch = 0; $('exportBtn').disabled = true; renderAll(); }
   function exitDemo() { $('demoBadge').classList.add('hidden'); $('demoBtn').textContent = '演示数据'; }
   function start() {
-    cancel(); exitDemo(); mode = 'real'; clearData();
+    cancel(); exitDemo(); mode = 'real'; serverOffset = 0; clearData();
     if (!preset.endpoint) { setBadge('待接入', 'warn'); notice('只读数据接口尚未配置，可点击“演示数据”预览。', 'warn'); return; }
     const supplied = new URLSearchParams(location.hash.slice(1)).get('token') || '';
     if (!supplied) { setBadge('等待访问链接'); notice('请使用含有访问凭据的完整个人链接打开；普通网址无法读取设备数值。', 'warn'); return; }
@@ -42,6 +43,7 @@
       if (!response.ok) throw Error('数据接口暂不可用（HTTP ' + response.status + '）');
       const payload = await response.json();
       if (myGeneration !== generation) return;
+      if (finite(payload.queriedAt)) serverOffset = Number(payload.queriedAt) - Date.now();
       ingest(payload); lastFetch = Date.now(); connected = true; setBadge('接口已连接', 'good'); renderAll();
     } catch (error) {
       if (myGeneration !== generation) return;
@@ -55,7 +57,7 @@
   }
   function ingest(payload) {
     if (payload.deviceName !== preset.deviceName || payload.productKey !== preset.productKey || !payload.items || typeof payload.items !== 'object') throw Error('接口返回的设备不匹配');
-    const now = Date.now(), changes = {};
+    const now = clockNow(), changes = {};
     const known = new Set(definitions.map(x => x.Identifier));
     for (const [key, row] of Object.entries(payload.items)) {
       if (!known.has(key)) continue;
@@ -124,10 +126,10 @@
     }));
   }
   function tick() {
-    $('clock').textContent = fmt(Date.now(),true);
+    $('clock').textContent = fmt(clockNow(),true);
     const rows = Object.values(items).filter(row => row.time), latest = rows.length ? Math.max(...rows.map(row => Number(row.time))) : 0;
     $('latestTime').textContent = latest ? fmt(latest,true) : '—';
-    const hasExpired = rows.some(stale), age = latest ? Math.max(0, Math.floor((Date.now()-Math.min(latest,receivedAt))/1000)) : null;
+    const hasExpired = rows.some(stale), age = latest ? Math.max(0, Math.floor((clockNow()-Math.min(latest,receivedAt))/1000)) : null;
     $('freshness').textContent = mode === 'demo' ? '模拟数据' : !rows.length ? '等待数据' : !connected ? '网页连接中断' : hasExpired ? '部分属性已过期' : '数据新鲜';
     $('freshness').style.color = mode === 'demo' || hasExpired ? 'var(--orange)' : 'var(--green)';
     if (mode === 'demo') notice('演示模式 · 以下为模拟数据，未连接真实 BMS。', 'warn');
@@ -151,7 +153,7 @@
   function renderAll() { renderMetrics(); renderCells(); renderStatus(); renderTable(); renderChart(); tick(); }
   $('demoBtn').addEventListener('click', () => {
     if(mode==='demo') { start(); return; }
-    cancel(); mode='demo'; clearData(); connected=true; $('demoBadge').classList.remove('hidden'); $('demoBtn').textContent='返回实时'; setBadge('演示模式','warn');
+    cancel(); mode='demo'; serverOffset=0; clearData(); connected=true; $('demoBadge').classList.remove('hidden'); $('demoBtn').textContent='返回实时'; setBadge('演示模式','warn');
     const demoStarted = Date.now();
     function sample() { const now=Date.now(), t=(now-demoStarted)/1000, data={};
       for(const def of definitions) { const key=def.Identifier; let value=null;
